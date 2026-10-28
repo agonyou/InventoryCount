@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>AppServicesEndpointURL</key>
+	<string>wss://wk3dpwxcd8gfwxsm.apps.cloud.couchbase.com:4984/inventorycount</string>
+	<key>CFBundleDisplayName</key>
+	<string>Tally</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.couchbase.InventoryCount</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>InventoryCount</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.2</string>
+	<key>CFBundleVersion</key>
+	<string>2</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Sync the inventory sheet with nearby devices over Bluetooth when Wi-Fi is unavailable.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_couchbaseP2P._tcp</string>
+	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Photograph items and scan barcodes to count them.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Discover nearby devices to sync the inventory sheet peer-to-peer.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Dictate items in Voice mode.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Pick an existing photo of items to count.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Transcribe dictated inventory items on device.</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Figtree-Regular.ttf</string>
+		<string>Figtree-SemiBold.ttf</string>
+		<string>Figtree-Bold.ttf</string>
+		<string>Figtree-ExtraBold.ttf</string>
+		<string>OpenSans-Regular.ttf</string>
+		<string>OpenSans-SemiBold.ttf</string>
+		<string>OpenSans-Bold.ttf</string>
+		<string>JetBrainsMono-Regular.ttf</string>
+		<string>JetBrainsMono-Medium.ttf</string>
+		<string>JetBrainsMono-SemiBold.ttf</string>
+	</array>
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+</dict>
+</plist>

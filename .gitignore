@@ -1,0 +1,10 @@
+# Secrets — provision.env holds the Capella API key and generated admin password
+provision.env
+# Build output
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+.DS_Store
+# Large local test photos — not committed
+test-photos/

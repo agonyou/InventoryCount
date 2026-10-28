@@ -41,6 +41,53 @@ Capella access pattern: **Team/Group** for `counts` and `catalogue` (route to `c
 - **Fallback: Claude API** (`claude-opus-5-5`, raw HTTPS, key in Keychain) when the on-device model is unavailable or when "Prefer cloud model" is on.
 - Speech: `SFSpeechRecognizer` with on-device recognition required when supported. Barcodes live: VisionKit `DataScannerViewController` (device only).
 
+## Setup guide (fresh clone)
+
+### What you need
+
+| Need | For | Notes |
+|---|---|---|
+| A Mac with **Xcode 26.x** (iOS 26 SDK) and an **iOS 26** simulator | everything | The project targets iOS 26.0. |
+| **Apple Intelligence** turned on (Mac for the simulator, or an eligible iPhone) | the on-device model | Without it, use the Claude fallback. |
+| A **Claude API key** (optional) | cloud fallback, accurate photo detection | Pasted in the app (Model & sync), stored in the Keychain. Never in a file. |
+| An Apple developer team (free or paid) | running on a real iPhone | Not needed for the simulator. |
+| A **Capella** account, plus `jq` and `curl` (`brew install jq`) | optional cloud sync only | The free tier is enough. |
+
+Swift packages resolve on first open. The app uses **Couchbase Lite Swift Enterprise Edition 4.1.x**
+(`couchbase-lite-swift-ee`), which is free for development; production use needs a Couchbase licence.
+
+### What is in the repo, and what is not
+
+Committed: the app source, the Xcode project, the fonts, the three Access Control Functions, the Capella
+setup and teardown scripts, `provision.env.example` and `tools/` (Foundation Models smoke tests).
+
+Not committed (see `.gitignore`):
+- `provision.env`: your Capella API key and the generated admin password. Create it from `provision.env.example`.
+- `build/`: Xcode build output.
+- `test-photos/`: large local test images. Use your own photos.
+
+### Files to update before you run
+
+| File | Setting | What to do | When |
+|---|---|---|---|
+| Xcode project, **Signing & Capabilities** | Team (`DEVELOPMENT_TEAM`) | Pick your own team. | Real iPhone only |
+| Xcode project and `InventoryCount/Info.plist` | Bundle id `com.couchbase.InventoryCount` | Change it to one you own, in both places (`PRODUCT_BUNDLE_IDENTIFIER` and `CFBundleIdentifier`). | Real iPhone only |
+| `InventoryCount/Info.plist` | `AppServicesEndpointURL` | It points at the author's demo endpoint. `setup-capella.sh` replaces it with yours. For peer-to-peer only, set it to `wss://PLACEHOLDER`: the app then shows cloud sync as "Not provisioned". | Cloud sync |
+| `provision.env` (from `provision.env.example`) | `CB_API_KEY` | Paste your Capella API secret (see the cloud sync steps below). | Cloud sync |
+| `provision.env` | `MANAGER_PASS`, `BOB_PASS` | Set your own passwords. Left blank they default to `Password1!`, which is published here, so anyone with your endpoint URL could sign in. | Cloud sync |
+| `InventoryCount/App/AppConfig.swift` | scope, collection names, `peerGroupID`, `defaultTeam` | Keep as is. If you rename collections, change `COLLECTIONS` in `provision.env` and the `sync-functions/*-sync-function.js` file names to match. If you run your own fork next to this one, change `peerGroupID` so the two don't sync with each other. | Only if you rename |
+
+Adding a Swift file: add it through Xcode (**File → Add Files**) so it lands in the project.
+
+### First run, in order
+
+1. `git clone https://github.com/agonyou/InventoryCount.git && cd InventoryCount`
+2. Simulator run, below ("Run it"). No accounts or keys needed; try `-tallyDemo` for sample rows.
+3. Optional: peer-to-peer between two simulators or devices ("Peer-to-peer sync").
+4. Optional: cloud sync ("Optional cloud sync — Capella").
+5. Optional: a real iPhone. Set your team and bundle id, connect the phone, pick it as the run destination,
+   **Cmd+R**. On-device Foundation Models and the live barcode scanner work only on a device.
+
 ## Run it (iOS Simulator, no signing)
 
 1. Open `InventoryCount.xcodeproj` in Xcode 26.x.
@@ -60,8 +107,8 @@ Debug launch arguments (Scheme → Run → Arguments): `-tallyDemo` seeds three 
 ## Optional cloud sync — Capella (you run this, ~20–45 min, free tier)
 
 1. **Create a Capella API key**: cloud.couchbase.com → your **Organization → Settings → API Keys → Generate Key** → name it → check **Organization Owner** → **Generate** → **download the key** (shown once).
-2. **Edit `provision.env`**: paste the key's `APIKeyToken` (shown as *API Secret* in the UI) into `CB_API_KEY=''`. Leave `APPSVC_ADMIN_PASS` blank. Endpoint, collections and `SYNC_FUNCTIONS_DIR` are already filled in.
-3. From this folder: `source provision.env && ./setup-capella.sh`. It creates the free-tier cluster, bucket `inventorycount`, scope/collections, App Service + endpoint `inventorycount`, uploads the three Access Control Functions, creates `manager` / `bob` (default password `Password1!`, see `grep -E "MANAGER_PASS|BOB_PASS" provision.env`), brings the endpoint Online and writes the WSS URL into `InventoryCount/Info.plist`.
+2. **Create `provision.env`**: `cp provision.env.example provision.env`, then paste the key's `APIKeyToken` (shown as *API Secret* in the UI) into `CB_API_KEY=''` and set your own `MANAGER_PASS` and `BOB_PASS`. Leave `APPSVC_ADMIN_PASS` blank (the script generates and saves it). Endpoint, collections and `SYNC_FUNCTIONS_DIR` are already filled in. `provision.env` is gitignored; never commit it.
+3. From this folder: `source provision.env && ./setup-capella.sh`. It creates the free-tier cluster, bucket `inventorycount`, scope/collections, App Service + endpoint `inventorycount`, uploads the three Access Control Functions, creates `manager` / `bob` with the passwords from `provision.env` (`Password1!` if left blank), brings the endpoint Online and writes the WSS URL into `InventoryCount/Info.plist`.
 4. Rebuild, open **Model & sync → Cloud sync**, sign in as `bob` (crew `crew-a`) or `manager`.
 
 **Project-scoped key or an existing standard cluster?** Set these in `provision.env` before running (IDs come from the Capella console URL `/organizations/<id>/projects/<id>/clusters/<id>/…`): `CB_ORGANIZATION_ID` (required for a Project Owner key, which cannot list organizations), `CB_PROJECT_ID` and optionally `CB_CLUSTER_ID` (adopted directly, never created or altered), `FREE_TIER='false'` (auto-detected if the cluster turns out not to be free tier), `APP_SERVICE_NODES` (2–12 on standard clusters) and `CB_BUCKET_RAM_MB` (default 128). `CB_API_KEY` is the base64 `APIKeyToken` / API Secret, never the 32-character Key ID.

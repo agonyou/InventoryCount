@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>AppServicesEndpointURL</key>
-	<string>wss://wk3dpwxcd8gfwxsm.apps.cloud.couchbase.com:4984/inventorycount</string>
+	<string>wss://PLACEHOLDER</string>
 	<key>CFBundleDisplayName</key>
 	<string>Tally</string>
 	<key>CFBundleExecutable</key>

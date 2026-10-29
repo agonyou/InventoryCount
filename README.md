@@ -72,7 +72,7 @@ Not committed (see `.gitignore`):
 |---|---|---|---|
 | Xcode project, **Signing & Capabilities** | Team (`DEVELOPMENT_TEAM`) | Pick your own team. | Real iPhone only |
 | Xcode project and `InventoryCount/Info.plist` | Bundle id `com.couchbase.InventoryCount` | Change it to one you own, in both places (`PRODUCT_BUNDLE_IDENTIFIER` and `CFBundleIdentifier`). | Real iPhone only |
-| `InventoryCount/Info.plist` | `AppServicesEndpointURL` | It points at the author's demo endpoint. `setup-capella.sh` replaces it with yours. For peer-to-peer only, set it to `wss://PLACEHOLDER`: the app then shows cloud sync as "Not provisioned". | Cloud sync |
+| `InventoryCount/Info.plist` | `AppServicesEndpointURL` | Ships as `wss://PLACEHOLDER`, so cloud sync shows "Not provisioned" and peer-to-peer works as is. `setup-capella.sh` writes your endpoint in. | Cloud sync |
 | `provision.env` (from `provision.env.example`) | `CB_API_KEY` | Paste your Capella API secret (see the cloud sync steps below). | Cloud sync |
 | `provision.env` | `MANAGER_PASS`, `BOB_PASS` | Set your own passwords. Left blank they default to `Password1!`, which is published here, so anyone with your endpoint URL could sign in. | Cloud sync |
 | `InventoryCount/App/AppConfig.swift` | scope, collection names, `peerGroupID`, `defaultTeam` | Keep as is. If you rename collections, change `COLLECTIONS` in `provision.env` and the `sync-functions/*-sync-function.js` file names to match. If you run your own fork next to this one, change `peerGroupID` so the two don't sync with each other. | Only if you rename |

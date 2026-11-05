@@ -4,7 +4,7 @@
  * Routed to the stores it is about, plus "admin". Fails closed on an unknown kind.
  * - purchase_order, count_check, shift_summary: one store (store_id).
  * - replenishment: every store a transfer goes to (transfers[].to_store_ids).
- * - cold_chain_alert: every signed-in user (a truck serves several stores).
+ * - cold_chain_alert: every store crew (channel "stores"; a truck serves several stores), not drivers.
  */
 function (doc, oldDoc) {
   var DOC_TYPE = "proposal", ADMIN_CHANNEL = "admin";
@@ -34,7 +34,7 @@ function (doc, oldDoc) {
     }
     for (var k = 0; k < stores.length; k++) channel(stores[k]);
   } else if (doc.kind === "cold_chain_alert") {
-    channel("!");
+    channel("stores");
   } else {
     throw ({ forbidden: "unknown proposal kind" });
   }

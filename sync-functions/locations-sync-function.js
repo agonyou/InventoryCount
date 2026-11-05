@@ -1,5 +1,6 @@
 /**
- * inventory.locations: reference locations, readable by everyone ("!"), written by admins only.
+ * inventory.locations: reference locations, readable by store crews and the manager (channel
+ * "stores", not drivers), written by admins only.
  */
 function (doc, oldDoc) {
   var DOC_TYPE = "location";
@@ -13,5 +14,6 @@ function (doc, oldDoc) {
   if (doc.type !== DOC_TYPE) throw ({ forbidden: "only locations belong in inventory.locations" });
   if (live && oldDoc.type !== DOC_TYPE) throw ({ forbidden: "a document cannot become a location" });
   if (!doc.location || typeof doc.location !== "object") throw ({ forbidden: "location object is required" });
-  channel("!");
+  channel("stores");
+  channel("admin");
 }

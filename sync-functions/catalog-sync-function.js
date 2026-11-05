@@ -3,7 +3,8 @@
  * - A team's catalog item (type "catalog_item", team): UPC/EAN to a name the crew gave it,
  *   routed to channel(team) + "admin".
  * - A store-system product (sku, name, code {type, value}, no team): written only by an admin
- *   (data loads arrive as imports), readable by every signed-in user.
+ *   (data loads arrive as imports), readable by store crews and the manager (channel "stores")
+ *   but not by drivers.
  */
 function (doc, oldDoc) {
   var DOC_TYPE = "catalog_item", ADMIN_ROLE = "admin", ADMIN_CHANNEL = "admin";
@@ -24,7 +25,8 @@ function (doc, oldDoc) {
   if (isProduct(doc)) {
     if (live && !isProduct(oldDoc)) throw ({ forbidden: "a document cannot become a product" });
     requireRole(ADMIN_ROLE);
-    channel("!");
+    channel("stores");
+    channel(ADMIN_CHANNEL);
     return;
   }
   if (live && isProduct(oldDoc)) throw ({ forbidden: "a product cannot become a catalog item" });

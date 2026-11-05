@@ -14,6 +14,8 @@ struct InventoryCountApp: App {
     @StateObject private var session = CaptureSession()
 
     init() {
+        // File logging first: the first Couchbase Lite call (here) warns if it is not on yet.
+        SyncLogs.start()
         #if DEBUG
         LogSinks.console = ConsoleLogSink(level: .warning, domains: .all)
         #endif

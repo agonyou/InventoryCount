@@ -1,10 +1,7 @@
 //  InventoryModel.swift
-//  The parsing/summary model behind every capture mode.
-//    Primary:  Apple Foundation Models (on device, iOS 26+). Typed output via @Generable.
-//    Fallback: Claude API (cloud) when the on-device model is unavailable, or for true
-//              visual analysis of a photo (image input to Foundation Models needs the iOS 27 SDK).
-//  Photos on device: Vision reads barcodes + printed text, and the text model turns that
-//  plus the user's notes into rows.
+//  The parsing/summary model behind every capture mode: Apple Foundation Models on device.
+//  Photos: Vision reads barcodes and printed text; the text model turns that and the notes into rows.
+//  Cloud AI runs in Celios Nomad over the synced data, not on the phone.
 
 import Foundation
 import FoundationModels
@@ -24,7 +21,7 @@ struct ParseResult {
     var rows: [ParsedRow]
     var sceneDescription: String
     var modelName: String
-    var items: [DetectedItem] = []     // item boxes (+ name/colour/material) for the photo overlay
+    var items: [DetectedItem] = []     // item boxes (+ name/color/material) for the photo overlay
 }
 
 @Generable(description: "One row of an inventory sheet")
@@ -74,11 +71,10 @@ enum ModelAvailability: Equatable {
 struct ModelFailure: LocalizedError { let message: String; var errorDescription: String? { message } }
 
 enum ModelError: LocalizedError {
-    case onDeviceUnavailable(ModelAvailability), noModel
+    case onDeviceUnavailable(ModelAvailability)
     var errorDescription: String? {
         switch self {
-        case .onDeviceUnavailable(let a): return "On-device model unavailable: \(a.label). Add a Claude API key in Model & sync to use the cloud fallback."
-        case .noModel: return "No model available. Enable Apple Intelligence or add a Claude API key."
+        case .onDeviceUnavailable(let a): return "On-device model unavailable: \(a.label). Turn on Apple Intelligence in Settings."
         }
     }
 }
@@ -90,14 +86,6 @@ final class InventoryModel: ObservableObject {
     @Published private(set) var availability: ModelAvailability = .unsupportedOS
     @Published var keepLoaded: Bool = UserDefaults.standard.bool(forKey: "tally.keepLoaded") {
         didSet { UserDefaults.standard.set(keepLoaded, forKey: "tally.keepLoaded"); if keepLoaded { prewarm() } }
-    }
-    @Published var preferCloud: Bool = UserDefaults.standard.bool(forKey: "tally.preferCloud") {
-        didSet { UserDefaults.standard.set(preferCloud, forKey: "tally.preferCloud") }
-    }
-    /// Photos: the on-device model can't see pixels until the iOS 27 SDK, so when a Claude key
-    /// exists, send the photo itself to the cloud model (true item detection) unless turned off.
-    @Published var photoUsesCloud: Bool = UserDefaults.standard.object(forKey: "tally.photoCloud") as? Bool ?? true {
-        didSet { UserDefaults.standard.set(photoUsesCloud, forKey: "tally.photoCloud") }
     }
 
     private var parseSession: LanguageModelSession?
@@ -120,7 +108,7 @@ final class InventoryModel: ObservableObject {
         if keepLoaded && availability == .ready { prewarm() }
     }
 
-    var usesOnDevice: Bool { availability == .ready && !(preferCloud && ClaudeService.hasAPIKey) }
+    var usesOnDevice: Bool { availability == .ready }
 
     private func makeSession() -> LanguageModelSession {
         if let parseSession { return parseSession }
@@ -132,7 +120,7 @@ final class InventoryModel: ObservableObject {
             - countIsEstimate is true ONLY when the counter says about/roughly/approximately, or says \
               they could not see everything. A plain number is NOT an estimate.
             - itemName: two to four words, singular ("blue storage bin").
-            - attributes: size, shape, colour only, a few words.
+            - attributes: size, shape, color only, a few words.
             - annotation: short facts the counter actually stated (condition, damage, packaging, \
               shelf layout), under 15 words. Leave it EMPTY when nothing was stated. Never copy \
               wording from these instructions.
@@ -146,7 +134,7 @@ final class InventoryModel: ObservableObject {
 
     private func makeSummarySession() -> LanguageModelSession {
         if let summarySession { return summarySession }
-        let s = LanguageModelSession(instructions: "You summarise warehouse inventory counts for a manager in plain prose. Two short paragraphs, under 150 words, no headings.")
+        let s = LanguageModelSession(instructions: "You summarize warehouse inventory counts for a manager in plain prose. Two short paragraphs, under 150 words, no headings.")
         summarySession = s
         return s
     }
@@ -161,7 +149,7 @@ final class InventoryModel: ObservableObject {
     static func describe(_ error: Error) -> String {
         if let g = error as? LanguageModelSession.GenerationError {
             switch g {
-            case .exceededContextWindowSize: return "Too much text for the on-device model in one go. Summarise fewer rows."
+            case .exceededContextWindowSize: return "Too much text for the on-device model in one go. Summarize fewer rows."
             case .assetsUnavailable: return "The on-device model assets are not available yet. Check Apple Intelligence in Settings."
             case .guardrailViolation: return "The on-device model declined this content (guardrail)."
             case .unsupportedGuide: return "Internal: unsupported generation guide."
@@ -175,7 +163,7 @@ final class InventoryModel: ObservableObject {
         }
         let text = error.localizedDescription
         if text.contains("GenerationError") {
-            return "The on-device model could not run here. On the iOS Simulator this is a known runtime/host mismatch (the model itself works on this Mac); run on an iPhone with Apple Intelligence, or add a Claude API key in Model & sync for the cloud fallback."
+            return "The on-device model could not run here. On the iOS Simulator this is a known runtime/host mismatch (the model itself works on this Mac); run on an iPhone with Apple Intelligence."
         }
         return text
     }
@@ -188,31 +176,22 @@ final class InventoryModel: ObservableObject {
 
     // MARK: - Parse
 
-    func parse(text: String, photo: PhotoAnalysis? = nil, imageJPEG: Data?,
+    func parse(text: String, photo: PhotoAnalysis? = nil,
                defaultLocation: ItemLocation, knownLocations: [String]) async throws -> ParseResult {
         let notes = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let codes = photo?.codes ?? []
-
-        // Photo + Claude key → send the picture itself (real item detection, colours, materials).
-        if imageJPEG != nil, photoUsesCloud, ClaudeService.hasAPIKey {
-            let r = try await ClaudeService.extractEntries(
-                text: contextBlock(notes: notes, photo: photo, codes: codes, defaultLocation: defaultLocation, knownLocations: knownLocations),
-                imageJPEG: imageJPEG, defaultLocation: defaultLocation.display, knownLocations: knownLocations)
-            return ParseResult(rows: r.entries.map(Self.row(from:)), sceneDescription: r.photoDescription,
-                               modelName: AppConfig.claudeModel, items: r.items.map(Self.item(from:)))
-        }
 
         var prompt = contextBlock(notes: notes, photo: photo, codes: codes, defaultLocation: defaultLocation, knownLocations: knownLocations)
         if let photo {
             prompt += """
 
 
-            This came from a PHOTO analysed on device (you cannot see pixels — only the detections above).
+            This came from a PHOTO analyzed on device (you cannot see pixels — only the detections above).
             Rules for photos:
             - Each DETECTED ITEM is one physical container/product. Make ONE row per item, or one row per
               distinct label when several items share a label (then count = how many share it).
             - Use the item's given name verbatim as itemName (it is already cleaned); only fix an
-              obvious OCR typo. Put its kind (if given) and colour in attributes.
+              obvious OCR typo. Put its kind (if given) and color in attributes.
             - If one name clearly contains TWO product names, make two rows.
             - Signage/menu text is context only — never a row.
             - annotation stays empty unless the counter's notes say something about that item.
@@ -230,7 +209,7 @@ final class InventoryModel: ObservableObject {
             let r: LanguageModelSession.Response<GeneratedRows>
             do {
                 r = try await s.respond(to: prompt, generating: GeneratedRows.self,
-                                        options: GenerationOptions(sampling: .greedy))
+                                        options: GenerationOptions(samplingMode: .greedy))
             } catch {
                 parseSession = nil
                 throw ModelFailure(message: InventoryModel.describe(error))
@@ -242,13 +221,7 @@ final class InventoryModel: ObservableObject {
                                                      confidence: min(100, max(0, $0.confidence))) },
                 sceneDescription: r.content.sceneDescription, modelName: onDeviceModelName, items: photo?.items ?? [])
         }
-        if ClaudeService.hasAPIKey {
-            let r = try await ClaudeService.extractEntries(text: prompt, imageJPEG: imageJPEG,
-                                                           defaultLocation: defaultLocation.display, knownLocations: knownLocations)
-            return ParseResult(rows: r.entries.map(Self.row(from:)), sceneDescription: r.photoDescription,
-                               modelName: AppConfig.claudeModel, items: r.items.isEmpty ? (photo?.items ?? []) : r.items.map(Self.item(from:)))
-        }
-        throw availability == .ready ? ModelError.noModel : ModelError.onDeviceUnavailable(availability)
+        throw ModelError.onDeviceUnavailable(availability)
     }
 
     /// Shared context: location, known locations, barcodes, and the structured photo detections.
@@ -270,18 +243,9 @@ final class InventoryModel: ObservableObject {
         return c
     }
 
-    private static func row(from e: ExtractedEntry) -> ParsedRow {
-        ParsedRow(itemName: e.itemName, count: e.count, countIsEstimate: e.countIsEstimate, attributes: e.sizeShapeColor,
-                  annotation: e.annotation, location: e.location, confidence: e.confidence)
-    }
-    private static func item(from i: ExtractedItem) -> DetectedItem {
-        // Claude reports boxes as fractions with origin top-left; Vision uses origin bottom-left.
-        let box = CGRect(x: i.x, y: 1 - i.y - i.h, width: i.w, height: i.h)
-        return DetectedItem(box: box, labelText: i.labelText, tags: [], color: i.color, name: i.name, material: i.material, count: i.count)
-    }
-
     // MARK: - Summary
 
+    /// For crews that are not a store; a store's end-of-shift summary comes from Nomad.
     func summarize(entries: [CountEntry]) async throws -> (text: String, model: String) {
         let items = entries.filter { $0.kind == .entry }
         // Precompute the arithmetic — the on-device model narrates, it does not add.
@@ -303,9 +267,7 @@ final class InventoryModel: ObservableObject {
         - Estimated counts: \(estimates.isEmpty ? "none" : estimates.map { "\($0.itemName) ≈\($0.count)" }.joined(separator: ", ")).
         - Rows flagged for review: \(items.filter(\.needsReview).count).
         - Counter's notes: \(notes.isEmpty ? "none" : notes).
-
-        Write two short paragraphs for the manager: first what was counted, then notable observations \
-        (damage, estimates, anything to re-check). Under 120 words. Plain prose, no headings, no lists.
+        Write two short paragraphs for the manager: first what was counted, then notable observations (damage, estimates, anything to re-check). Under 120 words. Plain prose, no headings, no lists.
         """
         if usesOnDevice {
             let s = makeSummarySession()
@@ -318,9 +280,6 @@ final class InventoryModel: ObservableObject {
                 throw ModelFailure(message: InventoryModel.describe(error))
             }
         }
-        if ClaudeService.hasAPIKey {
-            return (try await ClaudeService.summarize(prompt: prompt), AppConfig.claudeModel)
-        }
-        throw availability == .ready ? ModelError.noModel : ModelError.onDeviceUnavailable(availability)
+        throw ModelError.onDeviceUnavailable(availability)
     }
 }

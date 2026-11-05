@@ -25,7 +25,7 @@ Task {
             - countIsEstimate is true ONLY when the counter says about/roughly/approximately, or says \
               they could not see everything. A plain number is NOT an estimate.
             - itemName: two to four words, singular ("blue storage bin").
-            - attributes: size, shape, colour only, a few words.
+            - attributes: size, shape, color only, a few words.
             - annotation: short facts worth recording (condition, damage, packaging, layout such as \
               "3 shelves × 30"), under 15 words. Do not repeat the whole note.
             - location: the default location unless the note names another.

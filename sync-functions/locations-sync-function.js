@@ -1,16 +1,17 @@
 /**
- * locations-sync-function.js — inventory/locations, SHARED READ-ONLY.
- * Routed to the public "!" channel; only the admin role (manager) writes.
+ * inventory.locations: reference locations, readable by everyone ("!"), written by admins only.
  */
 function (doc, oldDoc) {
   var DOC_TYPE = "location";
-  if (doc.type == DOC_TYPE || (doc._deleted && oldDoc && oldDoc.type == DOC_TYPE)) {
-    requireRole("admin");
-    if (doc._deleted) { return; }
-    if (!doc.location || typeof doc.location !== "object") throw ({ forbidden: "location object is required" });
-    if (oldDoc && !oldDoc._deleted) {
-      if (doc.type !== oldDoc.type) throw ({ forbidden: "type cannot be changed" });
-    }
-    channel("!");
+  var live = oldDoc && !oldDoc._deleted;
+
+  requireRole("admin");
+  if (doc._deleted) {
+    if (!live || oldDoc.type !== DOC_TYPE) throw ({ forbidden: "not a location" });
+    return;
   }
+  if (doc.type !== DOC_TYPE) throw ({ forbidden: "only locations belong in inventory.locations" });
+  if (live && oldDoc.type !== DOC_TYPE) throw ({ forbidden: "a document cannot become a location" });
+  if (!doc.location || typeof doc.location !== "object") throw ({ forbidden: "location object is required" });
+  channel("!");
 }

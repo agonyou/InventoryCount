@@ -1208,7 +1208,7 @@ setup_app_users() {
   # POST→PUT-on-409: always update existing role so re-runs never leave stale config.
   echo "   Creating/updating 'admin' App Role..."
   local admin_ca role_body role_resp role_code
-  admin_ca=$(build_collection_access '["admin"]')
+  admin_ca=$(build_collection_access '["admin", "*"]')
   role_body=$(jq -n --arg name "admin" --argjson ca "$admin_ca" \
     '{"name":$name,"collection_access":$ca}')
   role_resp=$(curl -s -w "HTTPSTATUS:%{http_code}" -X POST "${base_url}/_role/" \
@@ -1263,7 +1263,7 @@ setup_app_users() {
   # POST→PUT-on-409 to upsert.
   echo "   Creating/updating 'bob' App User..."
   local bob_ca bob_body bob_resp bob_code
-  bob_ca=$(build_collection_access '["bob","crew-a"]')   # Team/Group: bob is a member of crew-a
+  bob_ca=$(build_collection_access '["bob","crew-a","store-001","dc-logistics"]')   # Team/Group: bob is a member of crew-a, store-001, and dc-logistics
   bob_body=$(jq -n --arg p "$BOB_PASS" --argjson ca "$bob_ca" \
     '{"name":"bob","password":$p,"collection_access":$ca}')
   bob_resp=$(curl -s -w "HTTPSTATUS:%{http_code}" -X POST "${base_url}/_user/" \

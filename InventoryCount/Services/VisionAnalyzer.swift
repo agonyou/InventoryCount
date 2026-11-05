@@ -3,7 +3,7 @@
 //    1. Item detection — rectangular containers (pans, bins, boxes) via Vision rectangles with
 //       overlap suppression. Boxes are normalized, origin bottom-left (Vision convention).
 //    2. Per-item sub-detection — OCR of the label under/inside the item (3× upscaled crop),
-//       image-classification tags (what it is / material hints), dominant colour.
+//       image-classification tags (what it is / material hints), dominant color.
 //  Plus whole-frame OCR, barcodes and scene tags. Everything here runs with no network.
 
 import Foundation
@@ -17,7 +17,7 @@ struct DetectedItem: Identifiable, Hashable {
     var labelText: String        // OCR near/under the item (cleaned product name)
     var kind: String = ""        // category word stripped from the label ("ice cream", "gelato"…)
     var tags: [String]           // classification identifiers, best first
-    var color: String            // dominant colour name
+    var color: String            // dominant color name
     var name: String = ""        // filled by a vision model (cloud) when available
     var material: String = ""    // filled by a vision model (cloud) when available
     var count: Int = 1
@@ -27,7 +27,7 @@ struct DetectedItem: Identifiable, Hashable {
         if !name.isEmpty { parts.append(name) }
         if !labelText.isEmpty { parts.append("name \"\(labelText)\"") }
         if !kind.isEmpty { parts.append("kind \(kind)") }
-        if !color.isEmpty { parts.append("colour \(color)") }
+        if !color.isEmpty { parts.append("color \(color)") }
         if !material.isEmpty { parts.append("material \(material)") }
         if !tags.isEmpty { parts.append("looks like \(tags.prefix(3).joined(separator: "/"))") }
         if count != 1 { parts.append("count \(count)") }
@@ -109,7 +109,7 @@ enum VisionAnalyzer {
         //      box extends upward over the product it sits under (shelf / display-case scenes)
         //   b) foreground instances (subject lifting): any shape — tubs, bottles, bags — as masks
         //   c) rectangles: bins, boxes, pans (fallback / supplement)
-        // Merged with overlap suppression. `source` is kept for the per-item colour sampling.
+        // Merged with overlap suppression. `source` is kept for the per-item color sampling.
         var candidates: [(box: CGRect, source: String, label: String)] = []
 
         // a) label cards → the label rail (the horizontal band holding the most cards). Other
@@ -196,7 +196,7 @@ enum VisionAnalyzer {
                     item.labelText = lines.joined(separator: " ")
                 }
             }
-            // Colour/tags from the product area: for label-anchored items skip the card itself (bottom third)
+            // Color/tags from the product area: for label-anchored items skip the card itself (bottom third)
             let productPx = cand.source == "label"
                 ? CGRect(x: px.minX, y: px.minY, width: px.width, height: px.height * 0.66)
                 : px
@@ -383,7 +383,7 @@ enum VisionAnalyzer {
         let col = UIColor(red: CGFloat(px[0]) / 255, green: CGFloat(px[1]) / 255, blue: CGFloat(px[2]) / 255, alpha: 1)
         var h: CGFloat = 0, s: CGFloat = 0, v: CGFloat = 0, a: CGFloat = 0
         col.getHue(&h, saturation: &s, brightness: &v, alpha: &a)
-        if s < 0.12 { return v > 0.8 ? "white" : v > 0.45 ? "grey/silver" : "black" }
+        if s < 0.12 { return v > 0.8 ? "white" : v > 0.45 ? "gray/silver" : "black" }
         let names = ["red", "orange", "yellow", "yellow-green", "green", "teal", "cyan", "blue", "violet", "magenta", "pink", "red"]
         let base = names[min(11, Int(h * 11))]
         return (v > 0.75 && s < 0.4 ? "pale " : "") + base

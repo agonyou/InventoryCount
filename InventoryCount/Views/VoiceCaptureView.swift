@@ -93,7 +93,8 @@ struct VoiceCaptureView: View {
         if !match.itemsText.isEmpty { pendingText += (pendingText.isEmpty ? "" : " ") + match.itemsText }
         switch match.command {
         case .stop:
-            speech.stop()                      // onChange(isListening) → preview of the remainder
+            speech.stop()
+            Task { await parseTranscript() }
         case .undo:
             undo()
             lastCommandNote = "Removed last row"
@@ -114,7 +115,7 @@ struct VoiceCaptureView: View {
     /// (editable later; low-confidence ones are flagged). Listening continues meanwhile.
     private func parseAndSaveHandsFree(_ text: String, location: ItemLocation) async {
         do {
-            let r = try await model.parse(text: text, imageJPEG: nil, defaultLocation: location,
+            let r = try await model.parse(text: text, defaultLocation: location,
                                           knownLocations: database.locations.map(\.location.display))
             guard !r.rows.isEmpty else { return }
             try RowSaver.save(r.rows, source: .voice, database: database, session: session, settings: settings, speech: speech)
@@ -134,37 +135,17 @@ struct VoiceCaptureView: View {
     }
 
     private var transcriptText: some View {
-        var t = Text("")
+        // One styled string: partial (not yet final) words dimmed.
+        var text = AttributedString()
         for s in speech.allSegments {
-            t = t + Text(s.text + " ").foregroundColor(s.isPartial ? CDS.inkSecondary.opacity(0.55) : CDS.ink)
+            var run = AttributedString(s.text + " ")
+            run.foregroundColor = s.isPartial ? CDS.inkSecondary.opacity(0.55) : CDS.ink
+            text += run
         }
-        return t.font(CDS.body(17)).lineSpacing(3)
+        return Text(text).font(CDS.body(17)).lineSpacing(3)
     }
 
-    private var heardThisSession: some View {
-        Group {
-            if !session.sessionRows.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Eyebrow(text: "Heard this session")
-                    ForEach(session.sessionRows.prefix(12)) { e in
-                        HStack(spacing: 10) {
-                            Image(systemName: e.source.systemImage).font(.system(size: 13)).foregroundStyle(CDS.inkSecondary).frame(width: 18)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(e.itemName).font(CDS.body(14, weight: .semibold)).foregroundStyle(CDS.ink)
-                                Text(e.location.chip).font(CDS.mono(11)).foregroundStyle(CDS.inkSecondary)
-                            }
-                            Spacer()
-                            Text(e.countBadge).font(CDS.mono(15, weight: .medium)).foregroundStyle(e.countIsEstimate ? CDS.amber : CDS.ink)
-                        }
-                        .padding(.horizontal, 12).padding(.vertical, 10)
-                        .background(CDS.surface, in: RoundedRectangle(cornerRadius: CDS.rowRadius, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: CDS.rowRadius, style: .continuous).strokeBorder(CDS.borderSubtle))
-                        .onTapGesture { path.append(Route.entry(e)) }
-                    }
-                }
-            }
-        }
-    }
+    private var heardThisSession: some View { SessionRowsList(path: $path) }
 
     private var estimateCard: some View {
         Group {
@@ -243,7 +224,7 @@ struct VoiceCaptureView: View {
         isParsing = true; error = nil
         defer { isParsing = false }
         do {
-            let r = try await model.parse(text: text, imageJPEG: nil,
+            let r = try await model.parse(text: text,
                                           defaultLocation: session.location, knownLocations: database.locations.map(\.location.display))
             parsed = r; rows = r.rows
         } catch { self.error = error.localizedDescription }

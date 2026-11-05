@@ -22,7 +22,7 @@ Task {
     \(rows)
     """
     for (label, useSchema) in [("typed", true), ("plain", false)] {
-        let s = LanguageModelSession(instructions: "You summarise warehouse inventory counts for a manager.")
+        let s = LanguageModelSession(instructions: "You summarize warehouse inventory counts for a manager.")
         do {
             let t0 = Date()
             if useSchema {

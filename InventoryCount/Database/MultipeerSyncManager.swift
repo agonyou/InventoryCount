@@ -32,6 +32,28 @@ final class MultipeerSyncManager: ObservableObject {
 
     private init() {}
 
+    /// What phones share directly: the crew's own team's counts and catalog items, and locations.
+    /// Never the store system's stock records or products, and not proposals, trucks or shipments,
+    /// which reach each phone only through App Services, routed to its store. Any phone in the
+    /// peer group is accepted, so nothing store-scoped travels this way.
+    static func peerCollections(_ database: DatabaseManager) -> [MultipeerCollectionConfiguration] {
+        let team: (Document) -> Bool = { $0.string(forKey: "team") == AppConfig.currentTeam }
+        let shared = [database.counts, database.catalogColl, database.locationsColl].compactMap { $0 }
+        return shared.map { coll in
+            var c = MultipeerCollectionConfiguration(collection: coll)
+            if coll.name == AppConfig.countsCollection {
+                let crewCount: MultipeerReplicationFilter = { _, doc, flags in
+                    flags.contains(.deleted) || (doc.string(forKey: "captured_by") != nil && team(doc))
+                }
+                c.pushFilter = crewCount; c.pullFilter = crewCount
+            } else if coll.name == AppConfig.catalogCollection {
+                let teamItem: MultipeerReplicationFilter = { _, doc, flags in flags.contains(.deleted) || team(doc) }
+                c.pushFilter = teamItem; c.pullFilter = teamItem
+            }
+            return c
+        }
+    }
+
     func start(database: DatabaseManager) {
         guard replicator == nil else { return }
         do {
@@ -41,7 +63,7 @@ final class MultipeerSyncManager: ObservableObject {
                 peerGroupID: AppConfig.peerGroupID,
                 identity: identity,
                 authenticator: authenticator,
-                collections: MultipeerCollectionConfiguration.fromCollections(database.allCollections))
+                collections: Self.peerCollections(database))
             config.transports = [.wifi, .bluetooth]
             let r = try MultipeerReplicator(config: config)
 

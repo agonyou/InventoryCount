@@ -20,6 +20,7 @@ struct CaptureScreen: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+            NomadStrip(path: $path)
             Group {
                 switch mode {
                 case .voice: VoiceCaptureView(path: $path)
@@ -38,6 +39,13 @@ struct CaptureScreen: View {
         HStack(spacing: 10) {
             LocationChip(path: $path)
             Spacer()
+            if AppConfig.currentStoreID != nil {
+                Button { path.append(Route.snapshot) } label: {
+                    Image(systemName: "storefront").font(.system(size: 17, weight: .medium)).foregroundStyle(CDS.ink)
+                        .frame(width: 44, height: 44)
+                }
+                .accessibilityLabel("Store snapshot")
+            }
             Button { path.append(Route.modelSync) } label: {
                 Image(systemName: "cpu").font(.system(size: 17, weight: .medium)).foregroundStyle(CDS.ink)
                     .frame(width: 44, height: 44)
@@ -83,6 +91,73 @@ struct CaptureScreen: View {
     }
 }
 
+/// "System 31 · −3" or "Matches the system": a count next to the store system's on-hand for the
+/// same item, shown the moment it is counted. Nothing when the item is not a store product.
+struct SystemCompareLine: View {
+    let counted: Int
+    var estimate = false
+    let match: StockMatch
+
+    var body: some View {
+        switch match {
+        case .exact(let system), .closest(let system):
+            let gap = counted - system.onHand
+            VStack(alignment: .leading, spacing: 1) {
+                if case .closest = match {
+                    // A guess from the name: say which item, so the counter can check it.
+                    Text("Closest: \(system.itemName)").font(CDS.body(11)).foregroundStyle(CDS.inkSecondary).lineLimit(1)
+                }
+                HStack(spacing: 4) {
+                    Image(systemName: gap == 0 ? "checkmark.circle.fill" : "arrow.left.arrow.right")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text(gap == 0 ? "Matches the system (\(system.onHand))"
+                                  : "System \(system.onHand) · \(estimate ? "≈" : "")\(gap > 0 ? "+" : "−")\(abs(gap))")
+                        .font(CDS.body(12, weight: .semibold))
+                }
+                .foregroundStyle(gap == 0 ? CDS.success : CDS.amber)
+            }
+            .accessibilityElement(children: .combine)
+        case .several(let n):
+            Text("\(n) store items fit this name: say the pack size or scan it")
+                .font(CDS.body(11)).foregroundStyle(CDS.inkSecondary)
+        case .none:
+            EmptyView()
+        }
+    }
+}
+
+/// The rows saved this session, each next to the store system's number. Shared by Voice and Text.
+struct SessionRowsList: View {
+    @Binding var path: NavigationPath
+    var title = "Heard this session"
+    @EnvironmentObject private var database: DatabaseManager
+    @EnvironmentObject private var session: CaptureSession
+
+    var body: some View {
+        if !session.sessionRows.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Eyebrow(text: title)
+                ForEach(session.sessionRows.prefix(12)) { e in
+                    HStack(spacing: 10) {
+                        Image(systemName: e.source.systemImage).font(.system(size: 13)).foregroundStyle(CDS.inkSecondary).frame(width: 18)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(e.itemName).font(CDS.body(14, weight: .semibold)).foregroundStyle(CDS.ink)
+                            Text(e.location.chip).font(CDS.mono(11)).foregroundStyle(CDS.inkSecondary)
+                            SystemCompareLine(counted: e.count, estimate: e.countIsEstimate, match: database.stockMatch(for: e))
+                        }
+                        Spacer()
+                        Text(e.countBadge).font(CDS.mono(15, weight: .medium)).foregroundStyle(e.countIsEstimate ? CDS.amber : CDS.ink)
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 10)
+                    .background(CDS.surface, in: RoundedRectangle(cornerRadius: CDS.rowRadius, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: CDS.rowRadius, style: .continuous).strokeBorder(CDS.borderSubtle))
+                    .onTapGesture { path.append(Route.entry(e)) }
+                }
+            }
+        }
+    }
+}
+
 /// Rows the model parsed, shown before they are saved. Shared by all three modes.
 struct ParsedRowsPreview: View {
     @Binding var rows: [ParsedRow]
@@ -91,6 +166,7 @@ struct ParsedRowsPreview: View {
     let onSave: () -> Void
     let onDiscard: () -> Void
     @EnvironmentObject private var settings: CaptureSettings
+    @EnvironmentObject private var database: DatabaseManager
 
     /// Id-keyed binding: never indexes the array by position, so a row that was removed
     /// (or a list that was cleared on Save/Discard) can't trigger "Index out of range".
@@ -124,6 +200,8 @@ struct ParsedRowsPreview: View {
                                 Text(item.location).font(CDS.mono(11)).foregroundStyle(CDS.inkSecondary)
                                 if low { Badge(text: "Review", color: CDS.amber) }
                             }
+                            SystemCompareLine(counted: item.count, estimate: item.countIsEstimate,
+                                              match: database.stockMatch(store: AppConfig.currentStoreID, sku: nil, itemName: item.itemName))
                         }
                         Spacer(minLength: 8)
                         VStack(alignment: .trailing, spacing: 6) {
@@ -160,18 +238,36 @@ enum RowSaver {
     static func save(_ rows: [ParsedRow], source: CaptureSource, codes: [ScannedCode] = [], photo: Data? = nil,
                      database: DatabaseManager, session: CaptureSession, settings: CaptureSettings, speech: SpeechRecognizer? = nil) throws {
         let now = Date()
+        let code = codes.first { $0.type != .qr }
+        let storeID = AppConfig.currentStoreID
         let entries = rows.map { r -> CountEntry in
             let low = settings.flagLowConfidence && r.confidence < settings.confidenceThreshold
+            // On a store team, a row that is a store product carries its sku: by the scanned code
+            // when that code is this row's product, else by its exact name.
+            var sku: String?
+            if storeID != nil {
+                // The scanned code is this row's when the row carries either name the code has: the
+                // store product's, or the team catalog's (Photo mode names a scan by the catalog first).
+                let names = [code.flatMap { database.product(for: $0)?.name }, code.flatMap { database.catalogItem(for: $0)?.name }]
+                let isScannedRow = names.contains { $0?.caseInsensitiveCompare(r.itemName) == .orderedSame }
+                sku = (isScannedRow ? code.flatMap { database.product(for: $0) }?.sku : nil)
+                    ?? database.product(named: r.itemName)?.sku
+            }
             return CountEntry(itemName: r.itemName, count: r.count, countIsEstimate: r.countIsEstimate,
                               attributes: r.attributes, annotation: r.annotation,
                               location: r.location.isEmpty ? session.location : ItemLocation(parsing: r.location),
-                              source: source, code: codes.first { $0.type != .qr }, confidence: r.confidence,
+                              source: source, code: code, storeID: storeID, sku: sku, confidence: r.confidence,
                               needsReview: low, capturedAt: now, hasPhoto: photo != nil)
         }
         try database.saveAll(entries, photo: photo)
         session.sessionRows.insert(contentsOf: entries, at: 0)
         if settings.readCountsAloud, let speech {
-            speech.speak(entries.map { "\($0.countIsEstimate ? "about " : "")\($0.count) \($0.itemName)" }.joined(separator: ", "))
+            // A count that differs from the store system is followed by the system's number.
+            speech.speak(entries.map { e in
+                var said = "\(e.countIsEstimate ? "about " : "")\(e.count) \(e.itemName)"
+                if let system = database.stockMatch(for: e).record, system.onHand != e.count { said += ", system says \(system.onHand)" }
+                return said
+            }.joined(separator: ", "))
         }
     }
 }

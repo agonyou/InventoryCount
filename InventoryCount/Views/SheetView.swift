@@ -1,6 +1,6 @@
 //  SheetView.swift
 //  The inventory sheet: sticky-header table, horizontally scrollable, badges for
-//  location and sync state, Filter and Summarise, Export in the header.
+//  location and sync state, Filter and Summarize, Export in the header.
 
 import SwiftUI
 
@@ -28,14 +28,14 @@ struct SheetView: View {
             HStack(alignment: .top) {
                 ScreenHeader(title: "Sheet", subtitle: "\(rows.count) rows · \(rows.reduce(0) { $0 + $1.count }) units")
                 Spacer()
+                SyncBadge().padding(.top, 12)
                 Button { exportURL = try? CSVExporter.writeTemporaryFile(for: rows) } label: {
                     Image(systemName: "square.and.arrow.up").font(.system(size: 17, weight: .medium)).frame(width: 44, height: 44)
                 }
                 .accessibilityLabel("Export CSV")
             }
             HStack(spacing: 8) {
-                Badge(text: session.location.chip, color: CDS.ink, mono: true)
-                SyncBadge()
+                Badge(text: session.location.chip, color: CDS.ink, mono: true).fixedSize()
                 Spacer(minLength: 4)
                 Menu {
                     Button("All locations") { filterLocation = nil }
@@ -46,7 +46,7 @@ struct SheetView: View {
                     Label(filterLocation == nil ? "Filter" : "Filtered", systemImage: "line.3.horizontal.decrease").font(CDS.body(13, weight: .semibold)).foregroundStyle(CDS.ink).fixedSize()
                 }
                 Button { path.append(Route.summary) } label: {
-                    Label("Summarise", systemImage: "text.badge.star").font(CDS.body(13, weight: .semibold)).fixedSize()
+                    Label("Summarize", systemImage: "text.badge.star").font(CDS.body(13, weight: .semibold)).fixedSize()
                 }
                 .buttonStyle(.borderedProminent).tint(CDS.red).disabled(rows.isEmpty)
             }

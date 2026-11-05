@@ -104,6 +104,7 @@ struct Badge: View {
     var body: some View {
         Text(text)
             .font(mono ? CDS.mono(12, weight: .medium) : CDS.body(12, weight: .semibold))
+            .lineLimit(1).minimumScaleFactor(0.75)   // a badge never wraps
             .foregroundStyle(filled ? .white : color)
             .padding(.horizontal, 10).padding(.vertical, 5)
             .background(filled ? color : color.opacity(0.10), in: Capsule())

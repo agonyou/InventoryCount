@@ -46,14 +46,33 @@ final class ReplicationManager: ObservableObject {
     func start(username: String, password: String, database: DatabaseManager) throws {
         isManuallyPaused = false
         stop()
-        guard let counts = database.counts, let locations = database.locationsColl else {
+        guard let counts = database.counts, let catalog = database.catalogColl,
+              let locations = database.locationsColl, let reviews = database.reviewsColl,
+              let proposals = database.proposalsColl, let trucks = database.trucksColl,
+              let shipments = database.shipmentsColl else {
             throw DBError.notOpen
         }
         let target = URLEndpoint(url: AppConfig.appServicesEndpointURL)
-        let collConfigs = [
-            CollectionConfiguration(collection: counts),
-            CollectionConfiguration(collection: locations),
-        ]
+        var collections = [counts, catalog, locations, reviews]
+        if AppConfig.syncsStoreData { collections += [proposals, trucks, shipments] }
+        // Never push what the access rules refuse, such as a document this phone received from a
+        // peer: reviews, proposals, trucks and shipments come only from Nomad and the store
+        // system, only a manager writes locations, stock records (no captured_by) and store
+        // products (no team) come only from the store system.
+        let isManager = username == AppConfig.managerUsername
+        let pullOnly: Set<String> = [AppConfig.reviewsCollection, AppConfig.proposalsCollection,
+                                     AppConfig.trucksCollection, AppConfig.shipmentsCollection]
+        let collConfigs = collections.map { coll -> CollectionConfiguration in
+            var c = CollectionConfiguration(collection: coll)
+            if pullOnly.contains(coll.name) || (coll.name == AppConfig.locationsCollection && !isManager) {
+                c.pushFilter = { _, _ in false }
+            } else if coll.name == AppConfig.countsCollection {
+                c.pushFilter = { doc, flags in flags.contains(.deleted) || doc.string(forKey: "captured_by") != nil }
+            } else if coll.name == AppConfig.catalogCollection {
+                c.pushFilter = { doc, flags in flags.contains(.deleted) || doc.string(forKey: "team") != nil }
+            }
+            return c
+        }
         var config = ReplicatorConfiguration(collections: collConfigs, target: target)
         config.replicatorType = .pushAndPull
         config.continuous = true

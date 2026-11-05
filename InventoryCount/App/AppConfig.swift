@@ -12,20 +12,30 @@ enum AppConfig {
     // Named scope — NEVER "_default". Matches COLLECTIONS='inventory/...'
     static let scopeName           = "inventory"
     static let countsCollection    = "counts"       // sheet rows (team-shared)
-    static let cataloguesCollection = "catalogue"   // UPC/EAN → product name (team-shared)
+    static let catalogCollection = "catalog"   // UPC/EAN → product name (team-shared)
     static let locationsCollection = "locations"    // reference list (shared read-only)
+    static let reviewsCollection   = "reviews"      // Nomad reviews (team-shared, read-only on device)
+    static let proposalsCollection = "proposals"    // what Nomad saved after approval (read-only on device)
+    static let trucksCollection    = "trucks"       // the fleet (read-only on device)
+    static let shipmentsCollection = "shipments"    // deliveries to the store (read-only on device)
+
+    /// Cloud sync includes proposals, trucks and shipments only when the App Services endpoint
+    /// links them (Info.plist `TallyStoreDataSync`): an endpoint missing a collection the phone
+    /// asks for refuses the whole replication. Peer-to-peer sync always carries them.
+    static var syncsStoreData: Bool { Bundle.main.object(forInfoDictionaryKey: "TallyStoreDataSync") as? Bool ?? false }
 
     // Capella (opt-in cloud sync)
     static let adminChannel        = "admin"
     static let managerUsername     = "manager"
     static let defaultTeam         = "crew-a"
+    static var currentTeam: String { UserDefaults.standard.string(forKey: "tally.team") ?? defaultTeam }
+    /// A team named like a store ("store-001") counts that store: its counts carry store_id, which
+    /// the counts rule requires to equal the team.
+    static var currentStoreID: String? { currentTeam.hasPrefix("store-") ? currentTeam : nil }
 
     // Peer-to-peer
     static let peerGroupID         = "com.couchbase.tally"
     static let p2pIdentityLabel    = "com.couchbase.tally.identity"
-
-    // Cloud fallback model (optional; on-device Foundation Models is primary)
-    static let claudeModel         = "claude-opus-5-5"
 
     /// Stable per-install device id (captured_by).
     static var deviceID: String {

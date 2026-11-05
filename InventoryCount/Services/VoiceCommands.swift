@@ -1,6 +1,6 @@
 //  VoiceCommands.swift
 //  Spoken commands that split dictation into bins/shelves/racks without touching the phone.
-//  Recognised at the END of a finished utterance (the words before it are the items for the
+//  Recognized at the END of a finished utterance (the words before it are the items for the
 //  current location):
 //    "next bin" / "next shelf" / "next rack"        → advance that part
 //    "bin 15" / "bin fifteen", "shelf 2", "rack B",
@@ -28,7 +28,7 @@ enum VoiceCommands {
         "seventeen": 17, "eighteen": 18, "nineteen": 19, "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50,
     ]
 
-    /// Normalise "twenty one" → "21", "b" → "B"; keep letters/digits.
+    /// Normalize "twenty one" → "21", "b" → "B"; keep letters/digits.
     private static func value(_ raw: String) -> String {
         let words = raw.lowercased().split(separator: " ").map(String.init)
         var total = 0, sawNumber = false

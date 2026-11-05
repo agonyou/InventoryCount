@@ -1,5 +1,5 @@
 //  TextCaptureView.swift
-//  Labelled multi-line field, "Add to sheet" primary button, preview of parsed rows.
+//  Labeled multi-line field, "Add to sheet" primary button, preview of parsed rows.
 
 import SwiftUI
 
@@ -45,6 +45,8 @@ struct TextCaptureView: View {
                 if parsed != nil {
                     ParsedRowsPreview(rows: $rows, modelName: parsed?.modelName ?? "",
                                       onSave: save, onDiscard: { parsed = nil; rows = [] })
+                } else {
+                    SessionRowsList(path: $path, title: "Added this session")
                 }
             }
             .padding(16)
@@ -56,7 +58,7 @@ struct TextCaptureView: View {
         isParsing = true; error = nil; focused = false
         defer { isParsing = false }
         do {
-            let r = try await model.parse(text: notes, imageJPEG: nil,
+            let r = try await model.parse(text: notes,
                                           defaultLocation: session.location, knownLocations: database.locations.map(\.location.display))
             parsed = r; rows = r.rows
         } catch { self.error = error.localizedDescription }

@@ -80,9 +80,13 @@ struct CountEntry: Identifiable, Hashable {
     var location: ItemLocation
     var source: CaptureSource
     var code: ScannedCode?
+    var storeID: String?          // the store counted, for a store team (equals team)
+    var sku: String?              // the store product this row is, when it matched one
     var confidence: Int           // 0–100 from the model; < 60 → needs review
     var needsReview: Bool
     var capturedAt: Date
+    /// captured_at exactly as stored, written back unchanged: the counts rule refuses any change.
+    var capturedAtText: String? = nil
     var capturedBy: String        // device id
     var capturedByName: String
     var hasPhoto: Bool
@@ -91,7 +95,7 @@ struct CountEntry: Identifiable, Hashable {
 
     init(id: String = CountEntry.newID(),
          kind: EntryKind = .entry,
-         team: String = AppConfig.defaultTeam,
+         team: String = AppConfig.currentTeam,
          itemName: String,
          count: Int,
          countIsEstimate: Bool = false,
@@ -100,6 +104,8 @@ struct CountEntry: Identifiable, Hashable {
          location: ItemLocation,
          source: CaptureSource,
          code: ScannedCode? = nil,
+         storeID: String? = nil,
+         sku: String? = nil,
          confidence: Int = 100,
          needsReview: Bool = false,
          capturedAt: Date = Date(),
@@ -109,6 +115,7 @@ struct CountEntry: Identifiable, Hashable {
         self.id = id; self.kind = kind; self.team = team; self.itemName = itemName; self.count = count
         self.countIsEstimate = countIsEstimate; self.attributes = attributes; self.annotation = annotation
         self.location = location; self.source = source; self.code = code; self.confidence = confidence
+        self.storeID = storeID; self.sku = sku
         self.needsReview = needsReview; self.capturedAt = capturedAt; self.capturedBy = capturedBy
         self.capturedByName = capturedByName; self.hasPhoto = hasPhoto
     }
@@ -127,9 +134,13 @@ struct CountEntry: Identifiable, Hashable {
         location = ItemLocation(dictionary: d["location"] as? [String: Any])
         source = CaptureSource(rawValue: d["source"] as? String ?? "text") ?? .text
         code = ScannedCode(dictionary: d["code"] as? [String: Any])
+        storeID = d["store_id"] as? String
+        sku = d["sku"] as? String
         confidence = (d["confidence"] as? NSNumber)?.intValue ?? 100
         needsReview = d["needs_review"] as? Bool ?? false
-        capturedAt = ISO8601DateFormatter.cbl.date(from: d["captured_at"] as? String ?? "") ?? Date()
+        let capturedText = d["captured_at"] as? String
+        capturedAt = capturedText.flatMap(ISO8601DateFormatter.cblDate) ?? Date()
+        capturedAtText = capturedText
         capturedBy = d["captured_by"] as? String ?? ""
         capturedByName = d["captured_by_name"] as? String ?? ""
         hasPhoto = d["photo"] != nil
@@ -149,11 +160,13 @@ struct CountEntry: Identifiable, Hashable {
             "source": source.rawValue,
             "confidence": confidence,
             "needs_review": needsReview,
-            "captured_at": ISO8601DateFormatter.cbl.string(from: capturedAt),
+            "captured_at": capturedAtText ?? ISO8601DateFormatter.cbl.string(from: capturedAt),
             "captured_by": capturedBy,
             "captured_by_name": capturedByName,
         ]
         if let code { dict["code"] = code.dictionary }
+        if let storeID { dict["store_id"] = storeID }
+        if let sku { dict["sku"] = sku }
         return dict
     }
 
@@ -168,4 +181,14 @@ extension ISO8601DateFormatter {
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f
     }()
+    /// The same without fractional seconds, as other writers (the Query Workbench, scripts) store it.
+    static let cblWholeSeconds: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+    /// A stored timestamp, with or without fractional seconds.
+    static func cblDate(_ text: String) -> Date? {
+        cbl.date(from: text) ?? cblWholeSeconds.date(from: text)
+    }
 }

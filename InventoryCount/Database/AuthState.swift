@@ -18,9 +18,10 @@ final class AuthState: ObservableObject {
         let user = username.trimmingCharacters(in: .whitespaces)
         guard !user.isEmpty, !password.isEmpty else { throw LoginError.missingCredentials }
         guard AppConfig.isEndpointConfigured else { throw LoginError.noEndpoint }
+        // Start first: a sign-in that fails leaves no stored password and no username behind.
+        try ReplicationManager.shared.start(username: user, password: password, database: DatabaseManager.shared)
         KeychainHelper.save(password: password, for: user)
         self.username = user
-        try ReplicationManager.shared.start(username: user, password: password, database: DatabaseManager.shared)
         isCloudSignedIn = true
     }
 

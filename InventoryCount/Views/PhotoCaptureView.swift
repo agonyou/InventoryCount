@@ -1,5 +1,5 @@
 //  PhotoCaptureView.swift
-//  Photo with detected-bin overlay, QR → location chip, UPC → catalogue chip,
+//  Photo with detected-bin overlay, QR → location chip, UPC → catalog chip,
 //  scene description card, detected items, Retake / Add N rows.
 
 import SwiftUI
@@ -72,9 +72,9 @@ struct PhotoCaptureView: View {
         .onChange(of: image) { _, img in if img != nil { Task { await analyze() } } }
         .alert("Name this product", isPresented: Binding(get: { unknownCode != nil }, set: { if !$0 { unknownCode = nil } })) {
             TextField("Product name", text: $newCodeName)
-            Button("Save") { saveCatalogue() }
+            Button("Save") { saveCatalog() }
             Button("Cancel", role: .cancel) { unknownCode = nil }
-        } message: { Text("\(unknownCode?.type.rawValue.uppercased() ?? "") \(unknownCode?.value ?? "") is not in the catalogue yet. Name it once; later scans reuse it.") }
+        } message: { Text("\(unknownCode?.type.rawValue.uppercased() ?? "") \(unknownCode?.value ?? "") is not in the catalog yet. Name it once; later scans reuse it.") }
     }
 
     private var pickerCard: some View {
@@ -132,7 +132,7 @@ struct PhotoCaptureView: View {
                     Card(padding: 10) {
                         VStack(alignment: .leading, spacing: 2) {
                             Eyebrow(text: "Item \(highlightedBin + 1)")
-                            Text(it.summaryLine.isEmpty ? "No readable label; colour \(it.color)" : it.summaryLine)
+                            Text(it.summaryLine.isEmpty ? "No readable label; color \(it.color)" : it.summaryLine)
                                 .font(CDS.body(13)).foregroundStyle(CDS.ink)
                         }
                     }
@@ -154,7 +154,7 @@ struct PhotoCaptureView: View {
                             Label("QR → \(database.location(forQR: c.value)?.location.chip ?? c.value)", systemImage: "qrcode")
                         }
                     } else {
-                        let known = database.catalogueItem(for: c)
+                        let known = database.productName(for: c)
                         Button { if known == nil { unknownCode = c } } label: {
                             Label(known?.name ?? "\(c.type.rawValue.uppercased()) \(c.value) · name it", systemImage: "barcode")
                         }
@@ -171,8 +171,8 @@ struct PhotoCaptureView: View {
             BarcodeScannerView { code in
                 showingScanner = false
                 if code.type == .qr { applyQR(code) }
-                else if database.catalogueItem(for: code) == nil { unknownCode = code }
-                else { addCatalogueRow(code) }
+                else if database.productName(for: code) == nil { unknownCode = code }
+                else { addCatalogRow(code) }
             }
             .ignoresSafeArea()
             .navigationTitle("Scan").navigationBarTitleDisplayMode(.inline)
@@ -197,12 +197,12 @@ struct PhotoCaptureView: View {
         defer { isWorking = false }
         if analysis == nil { analysis = await VisionAnalyzer.analyze(image) }
         do {
-            let r = try await model.parse(text: notes, photo: analysis, imageJPEG: image.inventoryJPEG(),
+            let r = try await model.parse(text: notes, photo: analysis,
                                           defaultLocation: session.location,
                                           knownLocations: database.locations.map(\.location.display))
             parsed = r; rows = r.rows
             if !r.items.isEmpty { items = r.items; highlightedBin = 0 }
-            if r.rows.isEmpty { error = "No items recognised. Add a note describing the shelf and try again." }
+            if r.rows.isEmpty { error = "No items recognized. Add a note describing the shelf and try again." }
         } catch { self.error = error.localizedDescription }
     }
 
@@ -211,15 +211,15 @@ struct PhotoCaptureView: View {
         else { session.location = ItemLocation(parsing: code.value) }
     }
 
-    private func saveCatalogue() {
+    private func saveCatalog() {
         guard let code = unknownCode, !newCodeName.isEmpty else { return }
-        try? database.save(CatalogueItem(code: code, name: newCodeName))
+        try? database.save(CatalogItem(code: code, name: newCodeName))
         unknownCode = nil; newCodeName = ""
-        addCatalogueRow(code)
+        addCatalogRow(code)
     }
 
-    private func addCatalogueRow(_ code: ScannedCode) {
-        guard let item = database.catalogueItem(for: code) else { return }
+    private func addCatalogRow(_ code: ScannedCode) {
+        guard let item = database.productName(for: code) else { return }
         rows.append(ParsedRow(itemName: item.name, count: 1, countIsEstimate: false, attributes: item.attributes,
                               annotation: "Scanned \(code.type.rawValue.uppercased()) \(code.value)",
                               location: session.location.display, confidence: 100))

@@ -16,7 +16,7 @@ struct TranscriptSegment: Identifiable, Hashable {
 final class SpeechRecognizer: ObservableObject {
     /// Finalised text from earlier utterances in this listening session (endpointing restarts).
     @Published private(set) var committedSegments: [TranscriptSegment] = []
-    /// The utterance currently being recognised (partial words have isPartial == true).
+    /// The utterance currently being recognized (partial words have isPartial == true).
     @Published private(set) var segments: [TranscriptSegment] = []
     @Published private(set) var isListening = false
     @Published private(set) var utteranceCount = 0
@@ -81,7 +81,7 @@ final class SpeechRecognizer: ObservableObject {
         }
     }
 
-    /// One recognition task = one utterance. The recogniser's endpointer ends the task after a
+    /// One recognition task = one utterance. The recognizer's endpointer ends the task after a
     /// pause (silence timeout is not configurable), so when a final result arrives we commit it
     /// and immediately start a new task on the same audio stream. Listening only ends when the
     /// user taps the mic.
@@ -115,7 +115,7 @@ final class SpeechRecognizer: ObservableObject {
         }
     }
 
-    /// Voice-activity watchdog: once a second, measure silence since the last recognised word;
+    /// Voice-activity watchdog: once a second, measure silence since the last recognized word;
     /// past `idleTimeout` seconds, stop as if the mic had been tapped (flagged so the UI parses).
     private func startIdleWatcher() {
         idleWatcher?.cancel()

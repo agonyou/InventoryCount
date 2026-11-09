@@ -48,7 +48,7 @@ async function main() {
 
   // 1. Fetch all Master Catalog Items from Capella
   console.log('Fetching master products from catalog...');
-  const catResult = await cluster.query('SELECT c.* FROM `inventorycount`.inventory.catalog c');
+  const catResult = await cluster.query('SELECT c.sku, c.name, c.unit, c.reorder_quantity, c.reorder_level, c.category, c.department, c.perishable, c.attributes, c.code FROM `inventorycount`.inventory.catalog c WHERE category IS NOT NULL');
   const catalogItems = catResult.rows.map(r => r);
   console.log(`Loaded ${catalogItems.length} products from catalog.`);
 
@@ -82,74 +82,85 @@ async function main() {
   console.log(`Seeded ${dcLocations.length} DC locations.`);
 
   // 3. Seed DC Bulk Inventory in `counts` (site: "dc-01")
-  console.log('Seeding DC bulk inventory into "counts"...');
+  const skipCounts = process.argv.includes('--skip-counts') || process.argv.includes('--deliveries-only');
   let dcCount = 0;
-  for (let i = 0; i < catalogItems.length; i++) {
-    const item = catalogItems[i];
-    const unitsPerCase = item.unit === 'gallon' ? 4 : (item.unit === 'pack' ? 12 : (item.unit === 'can' || item.unit === 'box' ? 24 : 12));
-    const casesOnHand = Math.floor(item.reorder_quantity * (3 + (i % 4) * 0.5));
-    const totalUnits = casesOnHand * unitsPerCase;
-    const palletsOnHand = Math.max(1, Math.floor(casesOnHand / 40));
-    const reservedUnits = (i % 5 === 0) ? Math.floor(totalUnits * 0.15) : 0;
-    const availableToPromise = totalUnits - reservedUnits;
+  if (skipCounts) {
+    console.log('Skipping DC bulk inventory in "counts" (--skip-counts flag detected).');
+  } else {
+    console.log('Seeding DC bulk inventory into "counts" in concurrent batches...');
+    const BATCH_SIZE = 50;
+    for (let i = 0; i < catalogItems.length; i += BATCH_SIZE) {
+      const chunk = catalogItems.slice(i, i + BATCH_SIZE);
+      await Promise.all(chunk.map(async (item, chunkIdx) => {
+        const itemIdx = i + chunkIdx;
+        const unitsPerCase = item.unit === 'gallon' ? 4 : (item.unit === 'pack' ? 12 : (item.unit === 'can' || item.unit === 'box' ? 24 : 12));
+        const casesOnHand = Math.floor(item.reorder_quantity * (3 + (itemIdx % 4) * 0.5));
+        const totalUnits = casesOnHand * unitsPerCase;
+        const palletsOnHand = Math.max(1, Math.floor(casesOnHand / 40));
+        const reservedUnits = (itemIdx % 5 === 0) ? Math.floor(totalUnits * 0.15) : 0;
+        const availableToPromise = totalUnits - reservedUnits;
 
-    let dcRack = 'Bulk High-Bay Aisle 14';
-    if (item.category === 'Dairy' || item.category === 'Meat' || item.perishable) {
-      dcRack = item.category === 'Meat' ? 'Cold Vault 2 (Meat & Poultry)' : 'Cold Vault 1 (Dairy & Eggs)';
-    } else if (item.category === 'Household & Cleaning' || item.department === 'Dollar General Merchandise') {
-      dcRack = 'Bulk High-Bay Aisle 10';
-    } else if (item.category === 'Pet Supplies') {
-      dcRack = 'Bulk High-Bay Aisle 12';
+        let dcRack = 'Bulk High-Bay Aisle 14';
+        if (item.category === 'Dairy' || item.category === 'Meat' || item.perishable) {
+          dcRack = item.category === 'Meat' ? 'Cold Vault 2 (Meat & Poultry)' : 'Cold Vault 1 (Dairy & Eggs)';
+        } else if (item.category === 'Household & Cleaning' || item.department === 'Dollar General Merchandise') {
+          dcRack = 'Bulk High-Bay Aisle 10';
+        } else if (item.category === 'Pet Supplies') {
+          dcRack = 'Bulk High-Bay Aisle 12';
+        }
+
+        const tierNum = (itemIdx % 3) + 1;
+        const palletNum = String((itemIdx % 20) + 1).padStart(2, '0');
+
+        const dcDoc = {
+          type: 'count',
+          kind: 'entry',
+          team: 'dc-logistics',
+          sku: item.sku,
+          item_name: item.name,
+          count: totalUnits,
+          count_is_estimate: false,
+          attributes: item.attributes,
+          annotation: `DC Bulk Reserve. ${casesOnHand} cases (${palletsOnHand} pallets) on hand.`,
+          location: {
+            site: 'dc-01',
+            rack: dcRack,
+            shelf: `Tier ${tierNum}`,
+            bin: `Pallet P${palletNum}`
+          },
+          source: 'code',
+          code: item.code,
+          confidence: 100,
+          needs_review: false,
+          captured_at: nowISO,
+          captured_by: 'dc_wms_system',
+          captured_by_name: 'Celios-Nomad WMS',
+          store_id: 'dc-01',
+          store_name: 'Celios-Nomad Midwest Distribution Center',
+          facility_type: 'DistributionCenter',
+          stock_quantity: totalUnits,
+          units_per_case: unitsPerCase,
+          cases_on_hand: casesOnHand,
+          pallets_on_hand: palletsOnHand,
+          reserved_for_shipments: reservedUnits,
+          available_to_promise: availableToPromise,
+          reorder_level: item.reorder_level * 5,
+          reorder_quantity: item.reorder_quantity * 8,
+          stock_status: availableToPromise > (item.reorder_level * 5) ? 'in_stock' : 'low_stock',
+          temperature_class: item.perishable ? 'refrigerated' : 'ambient',
+          last_audit_date: nowISO
+        };
+
+        const countId = `count::dc-01::${item.sku}`;
+        await countsColl.upsert(countId, dcDoc);
+        dcCount++;
+      }));
+      if (i % 500 === 0 && i > 0) {
+        process.stdout.write(`  Upserted ${i}/${catalogItems.length} DC count docs...\r`);
+      }
     }
-
-    const tierNum = (i % 3) + 1;
-    const palletNum = String((i % 20) + 1).padStart(2, '0');
-
-    const dcDoc = {
-      type: 'count',
-      kind: 'entry',
-      team: 'dc-logistics',
-      sku: item.sku,
-      item_name: item.name,
-      count: totalUnits,
-      count_is_estimate: false,
-      attributes: item.attributes,
-      annotation: `DC Bulk Reserve. ${casesOnHand} cases (${palletsOnHand} pallets) on hand.`,
-      location: {
-        site: 'dc-01',
-        rack: dcRack,
-        shelf: `Tier ${tierNum}`,
-        bin: `Pallet P${palletNum}`
-      },
-      source: 'code',
-      code: item.code,
-      confidence: 100,
-      needs_review: false,
-      captured_at: nowISO,
-      captured_by: 'dc_wms_system',
-      captured_by_name: 'Celios-Nomad WMS',
-      // DC Bulk Supply Chain Fields
-      store_id: 'dc-01',
-      store_name: 'Celios-Nomad Midwest Distribution Center',
-      facility_type: 'DistributionCenter',
-      stock_quantity: totalUnits,
-      units_per_case: unitsPerCase,
-      cases_on_hand: casesOnHand,
-      pallets_on_hand: palletsOnHand,
-      reserved_for_shipments: reservedUnits,
-      available_to_promise: availableToPromise,
-      reorder_level: item.reorder_level * 5,
-      reorder_quantity: item.reorder_quantity * 8,
-      stock_status: availableToPromise > (item.reorder_level * 5) ? 'in_stock' : 'low_stock',
-      temperature_class: item.perishable ? 'refrigerated' : 'ambient',
-      last_audit_date: nowISO
-    };
-
-    const countId = `count::dc-01::${item.sku}`;
-    await countsColl.upsert(countId, dcDoc);
-    dcCount++;
+    console.log(`\nSeeded ${dcCount} DC bulk inventory records into "counts".`);
   }
-  console.log(`Seeded ${dcCount} DC bulk inventory records into "counts".`);
 
   // 4. Seed Fleet / Trucks in `trucks`
   console.log('Seeding Fleet Trucks into "trucks"...');
@@ -188,7 +199,7 @@ async function main() {
         speed_mph: 58,
         heading: 'NE',
         fuel_level_pct: 78,
-        reefer_temp_f: 34.2,
+        reefer_temp_f: 39.0,
         set_point_f: 34.0,
         last_ping: nowISO
       }

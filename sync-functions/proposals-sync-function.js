@@ -2,7 +2,8 @@
  * inventory.proposals: what Nomad saved after a person approved it (type "proposal"), written
  * only by an admin (Nomad writes with the SDK; App Services imports it), read-only on phones.
  * Routed to the stores it is about, plus "admin". Fails closed on an unknown kind.
- * - purchase_order, count_check, shift_summary: one store (store_id).
+ * - purchase_order, count_check, shift_summary, refrigeration_alert, network_alert: one store
+ *   (store_id; the last two are Nomad's store IoT workflows, and a site can be dc-01).
  * - replenishment: every store a transfer goes to (transfers[].to_store_ids).
  * - cold_chain_alert: every store crew (channel "stores"; a truck serves several stores), not drivers.
  */
@@ -19,7 +20,8 @@ function (doc, oldDoc) {
   if (live && oldDoc.type !== DOC_TYPE) throw ({ forbidden: "a document cannot become a proposal" });
   if (typeof doc.day !== "string" || !doc.day) throw ({ forbidden: "day is required" });
 
-  if (doc.kind === "purchase_order" || doc.kind === "count_check" || doc.kind === "shift_summary") {
+  var STORE_KINDS = ["purchase_order", "count_check", "shift_summary", "refrigeration_alert", "network_alert"];
+  if (STORE_KINDS.indexOf(doc.kind) >= 0) {
     if (typeof doc.store_id !== "string" || !doc.store_id) throw ({ forbidden: "store_id is required" });
     channel(doc.store_id);
   } else if (doc.kind === "replenishment") {
